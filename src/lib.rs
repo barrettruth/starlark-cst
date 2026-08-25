@@ -7,14 +7,23 @@
 //! Scope stops at syntax. Resolving `load()`, interpreting labels, and knowing
 //! what `cc_library` is are all the consumer's concern.
 //!
-//! ```no_run
-//! use starlark_cst::{Dialect, parse};
+//! ```
+//! use starlark_cst::{Dialect, parse, ast::{AstNode, CallExpr, Expr}};
 //!
-//! let src = "cc_library(\n    name = \"a\",  # keep\n)\n";
+//! let src = "cc_library(name = \"core\", srcs = [\"a.cc\"])\n";
 //! let parsed = parse(src, Dialect::Bazel);
 //! assert_eq!(parsed.syntax().to_string(), src);
+//!
+//! let call = parsed.syntax().descendants().find_map(CallExpr::cast).unwrap();
+//! assert_eq!(call.callee_name().as_deref(), Some("cc_library"));
+//!
+//! let Some(Expr::Literal(name)) = call.arg("name") else { unreachable!() };
+//! assert_eq!(name.string_value().as_deref(), Some("core"));
+//! // The content range excludes the quotes: what a go-to-definition reports.
+//! assert_eq!(&src[name.string_value_range().unwrap()], "core");
 //! ```
 
+pub mod ast;
 pub mod dialect;
 pub mod lexer;
 pub mod parser;

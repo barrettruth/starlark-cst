@@ -2,9 +2,18 @@
 
 Lossless concrete syntax tree for Starlark and the Bazel build language.
 
-> [!WARNING]
-> The parser is not implemented yet. The public API, dialect table, and
-> conformance harness are.
+```rust
+use starlark_cst::{Dialect, parse, ast::{AstNode, CallExpr, Expr}};
+
+let parsed = parse("cc_library(name = \"core\", srcs = [\"a.cc\"])\n", Dialect::Bazel);
+let call = parsed.syntax().descendants().find_map(CallExpr::cast).unwrap();
+
+assert_eq!(call.callee_name().as_deref(), Some("cc_library"));
+let Some(Expr::Literal(name)) = call.arg("name") else { unreachable!() };
+assert_eq!(name.string_value().as_deref(), Some("core"));
+// The content range excludes the quotes: what a go-to-definition reports.
+assert_eq!(name.string_value_range().unwrap(), (19..23).into());
+```
 
 ## Why
 

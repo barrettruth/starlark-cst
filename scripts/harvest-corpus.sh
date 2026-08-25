@@ -27,16 +27,30 @@ repos=(
 
 mkdir -p "$sources"
 
+# A single unreachable upstream must not fail the harvest: mirrors go away, and
+# some networks proxy git and allowlist by org. Sufficiency is enforced by
+# corpus_is_populated instead of by every clone succeeding.
+available=()
 for repo in "${repos[@]}"; do
   name="${repo##*/}"
   if [ ! -d "$sources/$name" ]; then
     echo "cloning $repo"
-    git clone --depth=1 --quiet "https://github.com/$repo.git" "$sources/$name"
+    if ! git clone --depth=1 --quiet "https://github.com/$repo.git" "$sources/$name" 2>&1; then
+      echo "warning: could not clone $repo, skipping" >&2
+      rm -rf "${sources:?}/$name"
+      continue
+    fi
   fi
+  available+=("$repo")
 done
 
+if [ ${#available[@]} -eq 0 ]; then
+  echo "error: no sources could be cloned" >&2
+  exit 1
+fi
+
 count=0
-for repo in "${repos[@]}"; do
+for repo in "${available[@]}"; do
   name="${repo##*/}"
   dest="$corpus/$name"
   rm -rf "$dest"

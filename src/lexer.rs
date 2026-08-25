@@ -115,8 +115,14 @@ impl<'a> Lexer<'a> {
 
     fn run(mut self) -> Vec<Lexeme> {
         while self.pos < self.bytes.len() {
-            if self.at_line_start && self.depth == 0 {
-                self.line_start();
+            if self.at_line_start {
+                if self.depth == 0 {
+                    self.line_start();
+                } else {
+                    // Layout is suppressed inside brackets; the line has begun.
+                    self.at_line_start = false;
+                    self.token();
+                }
             } else {
                 self.token();
             }
@@ -410,9 +416,11 @@ impl<'a> Lexer<'a> {
             "type" if self.dialect.allows_type_syntax() => K::TYPE_KW,
             "cast" if self.dialect.has_type_keywords() => K::CAST_KW,
             "isinstance" if self.dialect.has_type_keywords() => K::ISINSTANCE_KW,
-            "while" | "with" | "match" | "try" | "class" | "import" | "assert" | "async"
-            | "await" | "del" | "except" | "finally" | "from" | "global" | "is" | "nonlocal"
-            | "raise" | "yield" => K::FORBIDDEN_KW,
+            // Bazel's Lexer.java reserved set. `match` is absent: it is a
+            // Python soft keyword only, and real BUILD files use it as a name.
+            "while" | "with" | "try" | "class" | "import" | "assert" | "async" | "await"
+            | "del" | "except" | "finally" | "from" | "global" | "is" | "nonlocal" | "raise"
+            | "yield" => K::FORBIDDEN_KW,
             _ => return None,
         };
         Some(kind)

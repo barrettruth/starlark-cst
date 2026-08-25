@@ -187,6 +187,32 @@ fn corpus_is_covered_byte_for_byte() {
     );
 }
 
+/// Layout is suppressed inside brackets, including on the line that closes
+/// them. Measuring indentation there emits a spurious `INDENT` whose `DEDENT`
+/// then closes an enclosing block that was never open — which shows up far
+/// away, as a round-trip failure in an unrelated file.
+#[test]
+fn brackets_suppress_layout_through_the_closing_line() {
+    let layout = |src: &str| {
+        tokenize(src, Dialect::Bazel)
+            .into_iter()
+            .filter(|t| matches!(t.kind, SyntaxKind::INDENT | SyntaxKind::DEDENT))
+            .count()
+    };
+
+    // The closer sits at a fresh column and the line continues past it.
+    assert_eq!(layout("x = [\n    1,\n] if c else []\n"), 0);
+    // Indented continuation lines inside a call.
+    assert_eq!(layout("f(\n    a,\n        b,\n)\n"), 0);
+    // A dedented closer followed by another statement.
+    assert_eq!(layout("x = {\n    'a': 1,\n}\ny = 2\n"), 0);
+    // Nested brackets closing several levels on one line.
+    assert_eq!(layout("x = [[\n    1,\n]]\n"), 0);
+
+    // A real block still gets exactly one pair.
+    assert_eq!(layout("def f():\n    pass\n"), 2);
+}
+
 fn render(src: &str, dialect: Dialect) -> String {
     let mut offset = 0usize;
     let mut out = String::new();

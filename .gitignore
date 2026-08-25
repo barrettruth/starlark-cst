@@ -1,0 +1,15 @@
+/target
+
+.*cache*
+CLAUDE.md
+.claude/
+
+.envrc
+.direnv/
+result
+result-*
+
+/corpus/*
+!/corpus/handwritten/
+
+notes/

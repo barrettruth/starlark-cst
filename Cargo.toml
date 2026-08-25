@@ -1,0 +1,25 @@
+[package]
+name = "starlark-cst"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+authors = ["Barrett Ruth <br@barrettruth.com>"]
+description = "Lossless concrete syntax tree for Starlark and the Bazel build language"
+license = "MIT"
+repository = "https://github.com/barrettruth/starlark-cst"
+readme = "README.md"
+keywords = ["starlark", "bazel", "parser", "cst", "syntax"]
+categories = ["parser-implementations", "development-tools"]
+
+[dependencies]
+rowan = "0.17"
+
+[dev-dependencies]
+expect-test = "1"
+walkdir = "2"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = "warn"

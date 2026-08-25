@@ -16,7 +16,7 @@ sources="$corpus/.sources"
 
 repos=(
   "bazelbuild/bazel"
-  "bazel-contrib/rules_cc"
+  "bazelbuild/rules_cc"
   "bazelbuild/rules_python"
   "bazelbuild/rules_go"
   "bazelbuild/bazel-skylib"

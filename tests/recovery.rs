@@ -147,6 +147,37 @@ fn round_trips_malformed_input() {
     );
 }
 
+/// An over-indented line must be reported, and must not end the block it sits
+/// in. Swallowing the stray `INDENT` pairs the following `DEDENT` with the
+/// outer block, which silently drops the rest of the body to the top level —
+/// a wrong tree with no diagnostic to hint at it.
+#[test]
+fn over_indentation_is_reported_and_contained() {
+    let src = "def f():\n    a = 1\n        b = 2\n    c = 3\n";
+    let parsed = parse(src, Dialect::Bazel);
+
+    assert_eq!(parsed.syntax().to_string(), src);
+    assert!(
+        !parsed.ok(),
+        "inconsistent indentation must produce a diagnostic"
+    );
+
+    let root = parsed.syntax();
+    let top: Vec<_> = root.children().map(|n| n.kind()).collect();
+    assert_eq!(
+        top,
+        vec![starlark_cst::SyntaxKind::DEF_STMT],
+        "`c = 3` belongs to the function body, not the file"
+    );
+
+    let def = root.first_child().unwrap();
+    assert_eq!(
+        usize::from(def.text_range().end()),
+        src.len(),
+        "the def must span the whole body"
+    );
+}
+
 /// Deeply nested input must not exhaust the stack.
 ///
 /// This one cannot be expressed as an assertion: a stack overflow aborts the

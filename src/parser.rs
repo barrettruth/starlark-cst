@@ -519,19 +519,7 @@ impl Parser<'_> {
                 self.bump();
             }
             if self.at(SyntaxKind::INDENT) {
-                self.bump_layout();
-                loop {
-                    match self.current() {
-                        SyntaxKind::DEDENT => {
-                            self.bump_layout();
-                            break;
-                        }
-                        SyntaxKind::EOF => break,
-                        SyntaxKind::NEWLINE => self.bump(),
-                        SyntaxKind::INDENT => self.bump_layout(),
-                        _ => self.statement(),
-                    }
-                }
+                self.indented_block();
             } else {
                 self.error("expected an indented block");
             }
@@ -541,6 +529,45 @@ impl Parser<'_> {
             self.error("expected a statement");
         }
         self.finish();
+    }
+
+    /// `INDENT statement* DEDENT`. Assumes the current token is `INDENT`.
+    ///
+    /// A further `INDENT` means a line indented past its own block. The lexer
+    /// opens a block there so the layout tokens stay balanced and leaves the
+    /// diagnosis to us; swallowing it instead would pair the inner `DEDENT`
+    /// with the outer block and silently end it early, dropping the rest of
+    /// the body out of the enclosing statement.
+    fn indented_block(&mut self) {
+        self.bump_layout(); // INDENT
+        loop {
+            match self.current() {
+                SyntaxKind::DEDENT => {
+                    self.bump_layout();
+                    break;
+                }
+                SyntaxKind::EOF => break,
+                SyntaxKind::NEWLINE => self.bump(),
+                SyntaxKind::INDENT => {
+                    self.error("unexpected indentation");
+                    self.start(SyntaxKind::SUITE);
+                    self.suite_nested();
+                    self.finish();
+                }
+                _ => self.statement(),
+            }
+        }
+    }
+
+    /// `indented_block` behind the recursion budget.
+    fn suite_nested(&mut self) {
+        if self.recursion >= MAX_RECURSION {
+            self.too_deep();
+            return;
+        }
+        self.recursion += 1;
+        self.indented_block();
+        self.recursion -= 1;
     }
 
     // -- expressions ---------------------------------------------------------

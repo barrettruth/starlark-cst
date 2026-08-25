@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Populate corpus/ with real-world Bazel files.
 #
-# Sources are shallow-cloned into corpus/.sources and flattened into
-# corpus/<repo>/, preserving file names so `classify` sees the right dialect.
+# Sources are shallow-cloned into corpus/.sources and copied into corpus/<repo>/
+# with their directory structure intact. The structure matters: `classify`
+# dispatches on the file name, so a flattened `pkg__BUILD` stops being a BUILD
+# file and silently leaves the corpus.
+#
 # Only corpus/handwritten/ is committed.
 
 set -euo pipefail
@@ -40,8 +43,8 @@ for repo in "${repos[@]}"; do
   mkdir -p "$dest"
   while IFS= read -r -d '' file; do
     rel="${file#"$sources/$name/"}"
-    flat="${rel//\//__}"
-    cp "$file" "$dest/$flat"
+    mkdir -p "$dest/$(dirname "$rel")"
+    cp "$file" "$dest/$rel"
     count=$((count + 1))
   done < <(find "$sources/$name" \
     -path '*/.git' -prune -o \

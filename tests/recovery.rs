@@ -147,6 +147,48 @@ fn round_trips_malformed_input() {
     );
 }
 
+/// Deeply nested input must not exhaust the stack.
+///
+/// This one cannot be expressed as an assertion: a stack overflow aborts the
+/// process instead of unwinding, so `catch_unwind` does not see it and the test
+/// binary dies outright. Reaching the end of this function is the assertion.
+#[test]
+fn deep_nesting_does_not_overflow() {
+    for (open, close) in [('(', ')'), ('[', ']'), ('{', '}')] {
+        for n in [1_000usize, 100_000] {
+            let src = format!(
+                "x = {}1{}\n",
+                open.to_string().repeat(n),
+                close.to_string().repeat(n)
+            );
+            let parsed = parse(&src, Dialect::Bazel);
+            assert_eq!(
+                parsed.syntax().to_string(),
+                src,
+                "{open} x{n} must round-trip"
+            );
+        }
+        // Unbalanced, so recovery unwinds a deep descent rather than a matched one.
+        let src = format!("x = {}1\n", open.to_string().repeat(50_000));
+        let parsed = parse(&src, Dialect::Bazel);
+        assert_eq!(
+            parsed.syntax().to_string(),
+            src,
+            "unclosed {open} must round-trip"
+        );
+    }
+
+    // Block nesting recurses through suite -> statement -> suite.
+    let mut src = String::new();
+    for i in 0..2_000 {
+        src.push_str(&"    ".repeat(i));
+        src.push_str("if x:\n");
+    }
+    src.push_str(&"    ".repeat(2_000));
+    src.push_str("pass\n");
+    assert_eq!(parse(&src, Dialect::Bazel).syntax().to_string(), src);
+}
+
 /// Recovery must be more than "wrap the whole file in one ERROR node". A
 /// single deleted bracket should not cost the entire file's structure.
 #[test]

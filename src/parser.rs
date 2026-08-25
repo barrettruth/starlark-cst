@@ -77,6 +77,7 @@ pub fn parse(src: &str, dialect: Dialect) -> Parse {
         builder: GreenNodeBuilder::new(),
         errors: Vec::new(),
         depth: 0,
+        recursion: 0,
     };
     parser.run()
 }
@@ -96,9 +97,17 @@ struct Parser<'a> {
     errors: Vec<ParseError>,
     /// `(`/`[`/`{` nesting. Newlines inside brackets are trivia.
     depth: usize,
+    /// Recursive-descent depth, guarded by [`MAX_RECURSION`].
+    recursion: usize,
 }
 
 const STMT_RECOVERY: &[SyntaxKind] = &[SyntaxKind::NEWLINE, SyntaxKind::DEDENT, SyntaxKind::EOF];
+
+/// Descent limit. Chosen well below where the stack actually runs out —
+/// measured overflow is around 10,000 nested parentheses — because the frames
+/// are large and the margin costs nothing: real Starlark does not nest deeply,
+/// and generated files that do are exactly the adversarial case this guards.
+const MAX_RECURSION: usize = 256;
 
 impl Parser<'_> {
     fn run(mut self) -> Parse {
@@ -489,7 +498,20 @@ impl Parser<'_> {
     }
 
     /// An indented block, or the rest of the line for a one-liner.
+    ///
+    /// Nested blocks recurse through `statement`, so this is guarded on the
+    /// same budget as expressions.
     fn suite(&mut self) {
+        if self.recursion >= MAX_RECURSION {
+            self.too_deep();
+            return;
+        }
+        self.recursion += 1;
+        self.suite_inner();
+        self.recursion -= 1;
+    }
+
+    fn suite_inner(&mut self) {
         self.start(SyntaxKind::SUITE);
         if self.at(SyntaxKind::NEWLINE) {
             self.bump();
@@ -601,7 +623,43 @@ impl Parser<'_> {
     }
 
     /// `lambda ...` | ternary | boolean precedence tower.
+    ///
+    /// Guards the descent: see [`Parser::too_deep`].
     fn test(&mut self) {
+        if self.recursion >= MAX_RECURSION {
+            self.too_deep();
+            return;
+        }
+        self.recursion += 1;
+        self.test_inner();
+        self.recursion -= 1;
+    }
+
+    /// Bail out of a descent that would otherwise exhaust the stack.
+    ///
+    /// A stack overflow aborts the process rather than unwinding, so
+    /// `catch_unwind` cannot contain it and a language server would die with
+    /// it. Everything from here to the enclosing bracket or statement boundary
+    /// becomes one `ERROR` node, which keeps the round trip intact.
+    fn too_deep(&mut self) {
+        self.error("nested too deeply");
+        self.start(SyntaxKind::ERROR);
+        let before = self.significant(0);
+        while !matches!(
+            self.current(),
+            SyntaxKind::R_PAREN | SyntaxKind::R_BRACKET | SyntaxKind::R_BRACE
+        ) && !STMT_RECOVERY.contains(&self.current())
+        {
+            self.bump();
+        }
+        // Guarantee progress even when the bail lands directly on a closer.
+        if self.significant(0) == before {
+            self.bump();
+        }
+        self.finish();
+    }
+
+    fn test_inner(&mut self) {
         if self.at(SyntaxKind::LAMBDA_KW) {
             self.lambda();
             return;

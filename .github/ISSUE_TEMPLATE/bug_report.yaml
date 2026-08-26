@@ -1,0 +1,54 @@
+name: Bug Report
+description: Report a bug in starlark-cst
+labels: [bug]
+body:
+  - type: checkboxes
+    attributes:
+      label: Prerequisites
+      options:
+        - label: I have searched existing issues and this is not a duplicate
+          required: true
+        - label: I have updated to the latest version of starlark-cst
+          required: true
+
+  - type: input
+    attributes:
+      label: Version
+      placeholder: 'starlark-cst 0.1.0'
+    validations:
+      required: true
+
+  - type: dropdown
+    attributes:
+      label: Which property broke?
+      options:
+        - Round-trip (output differs from input)
+        - Parse error on a file Bazel accepts
+        - Panic
+        - Wrong tree shape
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    attributes:
+      label: Dialect
+      description: The Dialect passed to parse, and the file name it came from
+      placeholder: 'Dialect::Bazel, BUILD.bazel'
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Input
+      description: The smallest source text that reproduces the problem
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Description
+      description: What happened, and what did you expect to happen?
+    validations:
+      required: true

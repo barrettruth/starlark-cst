@@ -23,7 +23,8 @@ pub struct Lexeme {
 /// - `INDENT` and `DEDENT` have `len == 0`
 /// - the final token is `EOF` with `len == 0`
 /// - never panics, never returns `Err`; unclassifiable bytes become
-///   [`SyntaxKind::ERROR_TOKEN`]
+///   [`SyntaxKind::ERROR_TOKEN`] spanning a whole UTF-8 character, so every
+///   token boundary is a character boundary and the sum above stays exact
 #[must_use]
 pub fn tokenize(src: &str, dialect: Dialect) -> Vec<Lexeme> {
     Lexer::new(src, dialect).run()
@@ -59,6 +60,13 @@ pub fn string_content_range(text: &str) -> Option<(usize, usize)> {
 
 const TAB_STOP: usize = 8;
 
+/// Operators of three bytes, matched before the two-byte table.
+///
+/// Maximal munch: longest match first, always. `//=` has to be tried before
+/// `//`, which has to be tried before `/`, and a table consulted in the wrong
+/// order mislexes silently — the failure appears three layers up as a
+/// round-trip mismatch, which is why `tests/lexer.rs` asserts every operator
+/// lexes back to itself.
 const THREE: &[(&[u8], SyntaxKind)] = &[
     (b"//=", SyntaxKind::DOUBLE_SLASH_ASSIGN),
     (b"<<=", SyntaxKind::SHL_ASSIGN),
@@ -151,6 +159,15 @@ impl<'a> Lexer<'a> {
 
     /// Measure the indentation of a fresh logical line and synthesise
     /// `INDENT`/`DEDENT`. Blank and comment-only lines leave the stack alone.
+    /// Measure a line's indentation and emit the `INDENT`/`DEDENT` it implies.
+    ///
+    /// A blank or comment-only line carries no block structure and is skipped,
+    /// so a comment at column zero inside a body does not close it.
+    ///
+    /// A column matching no enclosing block is an indentation error, and the
+    /// answer is to open a block anyway: `INDENT` and `DEDENT` must stay
+    /// balanced for the parser to recover at all, so the lexer keeps the
+    /// bookkeeping honest and leaves the diagnosis to the parser.
     fn line_start(&mut self) {
         let start = self.pos;
         let mut col = 0usize;
@@ -262,6 +279,11 @@ impl<'a> Lexer<'a> {
 
     /// `prefix_len` bytes of `r`/`b` prefix have already been accepted and
     /// `self.pos` sits on the opening quote.
+    /// Consume a string literal, from its prefix to its closing quote.
+    ///
+    /// An escape consumes the next byte in raw strings too: in a raw string
+    /// `\"` is two characters of *content* and does not terminate the literal,
+    /// even though the backslash is not an escape in the value.
     fn string(&mut self, prefix_len: usize, is_bytes: bool) {
         let start = self.pos - prefix_len;
         let quote = self.bytes[self.pos];
@@ -383,6 +405,11 @@ impl<'a> Lexer<'a> {
         self.push(kind, self.pos - start);
     }
 
+    /// The keyword a word is, if any.
+    ///
+    /// The forbidden set is transcribed from Bazel's `Lexer.java`. `match` is
+    /// deliberately absent: it is a soft keyword in Python only, and real BUILD
+    /// files use it as an ordinary name.
     fn keyword(&self, text: &str) -> Option<SyntaxKind> {
         use SyntaxKind as K;
         let kind = match text {

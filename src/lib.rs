@@ -29,6 +29,14 @@ pub mod lexer;
 pub mod parser;
 pub mod syntax_kind;
 
+/// Text spans, re-exported from `rowan`.
+///
+/// Every range this crate hands out is one of these, so a consumer that wants
+/// to store one, return one, or name one in a signature needs the type. Without
+/// the re-export the only way to have it is to depend on `rowan` directly and
+/// hope the versions match.
+pub use rowan::{TextRange, TextSize};
+
 pub use dialect::{Dialect, FileKind, classify};
 pub use lexer::{Lexeme, tokenize};
 pub use parser::{Parse, ParseError, parse};

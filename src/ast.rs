@@ -138,8 +138,6 @@ ast_node!(CompClause, COMP_CLAUSE);
 ast_node!(/// Tokens the parser could not place.
     Error, ERROR);
 
-// -- category enums ----------------------------------------------------------
-
 macro_rules! ast_enum {
     ($(#[$m:meta])* $name:ident { $($variant:ident($ty:ty)),* $(,)? }) => {
         $(#[$m])*
@@ -204,8 +202,6 @@ Stmt {
     Var(VarStmt),
     TypeAlias(TypeAliasStmt),
 });
-
-// -- accessors ---------------------------------------------------------------
 
 impl File {
     /// Top-level statements, in source order.
@@ -455,8 +451,6 @@ impl VarStmt {
 
     #[must_use]
     pub fn rhs(&self) -> Option<Expr> {
-        // The type annotation sits between the two, so the value is the
-        // expression that follows it.
         let ty_end = self.ty()?.range().end();
         children::<Expr>(&self.0).find(|e| e.range().start() >= ty_end)
     }
@@ -603,9 +597,7 @@ impl SliceExpr {
         };
         let second = colons.get(1).copied();
 
-        // Indexed rather than three bindings so the slot is chosen once.
         let mut slots: [Option<Expr>; 3] = [None, None, None];
-        // Skip the base, which precedes the opening bracket.
         for expr in children::<Expr>(&self.0).skip(1) {
             let at = expr.range().start();
             let slot = if at < first {

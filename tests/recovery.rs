@@ -26,7 +26,6 @@ fn corpus_files() -> Vec<PathBuf> {
         .map(walkdir::DirEntry::into_path)
         .filter(|p| classify(p, None).is_some())
         .collect();
-    // WalkDir order is filesystem-dependent; sort so the sample is stable.
     files.sort();
     files.truncate(MAX_FILES);
     files
@@ -127,7 +126,7 @@ fn round_trips_malformed_input() {
         let dialect = classify(&path, None).map_or(Dialect::Standard, |(d, _)| d);
         for (i, mutant) in mutants(&src).into_iter().enumerate() {
             let Ok(parsed) = catch(|| parse(&mutant, dialect)) else {
-                continue; // reported by never_panics_on_malformed_input
+                continue;
             };
             if parsed.syntax().to_string() != mutant {
                 failures.push(format!("{} mutant {i}", path.display()));
@@ -199,7 +198,6 @@ fn deep_nesting_does_not_overflow() {
                 "{open} x{n} must round-trip"
             );
         }
-        // Unbalanced, so recovery unwinds a deep descent rather than a matched one.
         let src = format!("x = {}1\n", open.to_string().repeat(50_000));
         let parsed = parse(&src, Dialect::Bazel);
         assert_eq!(
@@ -209,7 +207,6 @@ fn deep_nesting_does_not_overflow() {
         );
     }
 
-    // Block nesting recurses through suite -> statement -> suite.
     let mut src = String::new();
     for i in 0..2_000 {
         src.push_str(&"    ".repeat(i));
@@ -235,13 +232,11 @@ cc_library(
     srcs = [\"b.cc\"],
 )
 ";
-    // Sever the first call's argument list.
     let broken = src.replacen("name = \"a\",", "name = ,", 1);
 
     let parsed = parse(&broken, Dialect::Bazel);
     assert_eq!(parsed.syntax().to_string(), broken, "must still round-trip");
 
-    // The second, untouched rule has to survive as a call, not be swallowed.
     let calls = parsed
         .syntax()
         .descendants()

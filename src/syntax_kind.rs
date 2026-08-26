@@ -4,14 +4,11 @@
 //! node follows it. `Language::kind_from_raw` relies on the discriminants being
 //! contiguous from zero.
 
-// SCREAMING_CASE variants are the rowan/rust-analyzer convention for a syntax
-// alphabet, and keep the enum legible next to the grammar it encodes.
 #![allow(non_camel_case_types, clippy::upper_case_acronyms)]
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(u16)]
 pub enum SyntaxKind {
-    // -- trivia. Retained in the tree; this is what "lossless" costs.
     WHITESPACE = 0,
     COMMENT,
     /// `#: ...`, the Sphinx-style doc comment Bazel 9 introduced.
@@ -19,12 +16,10 @@ pub enum SyntaxKind {
     /// A `\` at end of line.
     LINE_CONTINUATION,
 
-    // -- layout
     NEWLINE,
     INDENT,
     DEDENT,
 
-    // -- literals
     INT,
     FLOAT,
     STRING,
@@ -32,7 +27,6 @@ pub enum SyntaxKind {
 
     IDENT,
 
-    // -- keywords
     AND_KW,
     BREAK_KW,
     CONTINUE_KW,
@@ -61,7 +55,6 @@ pub enum SyntaxKind {
     /// stays faithful and the consumer can produce Bazel's own error text.
     FORBIDDEN_KW,
 
-    // -- punctuation
     PLUS,
     MINUS,
     STAR,
@@ -111,10 +104,8 @@ pub enum SyntaxKind {
 
     EOF,
 
-    // -- nodes
     FILE,
 
-    // statements
     DEF_STMT,
     IF_STMT,
     FOR_STMT,
@@ -131,7 +122,6 @@ pub enum SyntaxKind {
     TYPE_ALIAS_STMT,
     SUITE,
 
-    // expressions
     LITERAL_EXPR,
     IDENT_EXPR,
     UNARY_EXPR,
@@ -153,14 +143,12 @@ pub enum SyntaxKind {
     /// `isinstance(x, T)`
     ISINSTANCE_EXPR,
 
-    // type syntax
     TYPE_REF,
     /// `list[int]`
     TYPE_APPLICATION,
     /// `int | None`
     TYPE_UNION,
 
-    // fragments
     PARAM_LIST,
     PARAM,
     ARG_LIST,

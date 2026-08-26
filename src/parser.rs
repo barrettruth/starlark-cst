@@ -128,8 +128,6 @@ impl Parser<'_> {
         }
     }
 
-    // -- cursor -------------------------------------------------------------
-
     fn is_trivia_at(&self, i: usize) -> bool {
         let kind = self.tokens[i].kind;
         kind.is_trivia() || (kind == SyntaxKind::NEWLINE && self.depth > 0)
@@ -274,8 +272,6 @@ impl Parser<'_> {
         self.finish();
     }
 
-    // -- statements ----------------------------------------------------------
-
     fn statement(&mut self) {
         match self.current() {
             SyntaxKind::DEF_KW => self.def_stmt(),
@@ -325,7 +321,6 @@ impl Parser<'_> {
                 self.finish();
             }
             SyntaxKind::LOAD_KW if self.nth(1) == SyntaxKind::L_PAREN => self.load_stmt(),
-            // `type T = ...` is a type alias; any other `type` is a name.
             SyntaxKind::TYPE_KW
                 if self.nth(1) == SyntaxKind::IDENT && self.nth(2) == SyntaxKind::ASSIGN =>
             {
@@ -342,8 +337,8 @@ impl Parser<'_> {
 
     fn load_stmt(&mut self) {
         self.start(SyntaxKind::LOAD_STMT);
-        self.bump(); // load
-        self.bump(); // (
+        self.bump();
+        self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
             self.start(SyntaxKind::LOAD_ITEM);
@@ -388,7 +383,6 @@ impl Parser<'_> {
                 self.finish();
             }
             SyntaxKind::COLON => {
-                // `x: int = 1`
                 self.builder.start_node_at(cp, SyntaxKind::VAR_STMT.into());
                 self.bump();
                 self.type_expr();
@@ -406,7 +400,7 @@ impl Parser<'_> {
 
     fn def_stmt(&mut self) {
         self.start(SyntaxKind::DEF_STMT);
-        self.bump(); // def
+        self.bump();
         if self.at_name() {
             self.bump();
         } else {
@@ -427,7 +421,7 @@ impl Parser<'_> {
 
     fn param_list(&mut self) {
         self.start(SyntaxKind::PARAM_LIST);
-        self.bump(); // (
+        self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
             self.param();
@@ -469,7 +463,7 @@ impl Parser<'_> {
 
     fn if_stmt(&mut self) {
         self.start(SyntaxKind::IF_STMT);
-        self.bump(); // if
+        self.bump();
         self.test();
         self.expect(SyntaxKind::COLON, "`:` after if condition");
         self.suite();
@@ -488,7 +482,7 @@ impl Parser<'_> {
 
     fn for_stmt(&mut self) {
         self.start(SyntaxKind::FOR_STMT);
-        self.bump(); // for
+        self.bump();
         self.target_list();
         self.expect(SyntaxKind::IN_KW, "`in` in for statement");
         self.expr_list();
@@ -539,7 +533,7 @@ impl Parser<'_> {
     /// with the outer block and silently end it early, dropping the rest of
     /// the body out of the enclosing statement.
     fn indented_block(&mut self) {
-        self.bump_layout(); // INDENT
+        self.bump_layout();
         loop {
             match self.current() {
                 SyntaxKind::DEDENT => {
@@ -569,8 +563,6 @@ impl Parser<'_> {
         self.indented_block();
         self.recursion -= 1;
     }
-
-    // -- expressions ---------------------------------------------------------
 
     /// Does the current token work as a plain name? Soft and conditional
     /// keywords do; they are only special in specific positions.
@@ -679,7 +671,6 @@ impl Parser<'_> {
         {
             self.bump();
         }
-        // Guarantee progress even when the bail lands directly on a closer.
         if self.significant(0) == before {
             self.bump();
         }
@@ -705,7 +696,7 @@ impl Parser<'_> {
 
     fn lambda(&mut self) {
         self.start(SyntaxKind::LAMBDA_EXPR);
-        self.bump(); // lambda
+        self.bump();
         self.start(SyntaxKind::PARAM_LIST);
         while !self.at(SyntaxKind::COLON) && !STMT_RECOVERY.contains(&self.current()) {
             let before = self.significant(0);
@@ -775,9 +766,9 @@ impl Parser<'_> {
             self.builder
                 .start_node_at(cp, SyntaxKind::BINARY_EXPR.into());
             if self.at(SyntaxKind::NOT_KW) {
-                self.bump(); // not
+                self.bump();
             }
-            self.bump(); // the operator / `in`
+            self.bump();
             self.bit_or();
             self.finish();
         }
@@ -874,7 +865,7 @@ impl Parser<'_> {
 
     fn arg_list(&mut self) {
         self.start(SyntaxKind::ARG_LIST);
-        self.bump(); // (
+        self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
             self.start(SyntaxKind::ARG);
@@ -893,7 +884,6 @@ impl Parser<'_> {
                 let inner = self.checkpoint();
                 self.test();
                 if self.at(SyntaxKind::FOR_KW) {
-                    // `f(x for x in y)`: not Starlark, but keep the tree sane.
                     self.builder
                         .start_node_at(inner, SyntaxKind::LIST_COMP.into());
                     self.comp_clauses();
@@ -918,7 +908,7 @@ impl Parser<'_> {
     /// Parse `[...]` after a primary; returns which node kind it turned out
     /// to be. Children are emitted; the caller wraps them.
     fn index_or_slice(&mut self) -> SyntaxKind {
-        self.bump(); // [
+        self.bump();
         let mut saw_colon = false;
         while !self.at(SyntaxKind::R_BRACKET) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
@@ -965,7 +955,6 @@ impl Parser<'_> {
                 self.finish();
             }
             SyntaxKind::FORBIDDEN_KW => {
-                // Bazel rejects the word; keep the tree faithful and flag it.
                 self.error("this keyword is reserved and cannot be used");
                 self.start(SyntaxKind::IDENT_EXPR);
                 self.bump();
@@ -987,7 +976,7 @@ impl Parser<'_> {
 
     fn paren_or_tuple(&mut self) {
         let cp = self.checkpoint();
-        self.bump(); // (
+        self.bump();
         if self.at(SyntaxKind::R_PAREN) {
             self.bump();
             self.wrap(cp, SyntaxKind::TUPLE_EXPR);
@@ -995,7 +984,6 @@ impl Parser<'_> {
         }
         self.test();
         if self.at(SyntaxKind::FOR_KW) {
-            // A generator expression: not Starlark, but produce structure.
             self.comp_clauses();
             self.expect(SyntaxKind::R_PAREN, "`)`");
             self.wrap(cp, SyntaxKind::LIST_COMP);
@@ -1027,7 +1015,7 @@ impl Parser<'_> {
 
     fn list_or_comp(&mut self) {
         let cp = self.checkpoint();
-        self.bump(); // [
+        self.bump();
         if self.at(SyntaxKind::R_BRACKET) {
             self.bump();
             self.wrap(cp, SyntaxKind::LIST_EXPR);
@@ -1057,7 +1045,7 @@ impl Parser<'_> {
 
     fn dict_or_comp(&mut self) {
         let cp = self.checkpoint();
-        self.bump(); // {
+        self.bump();
         if self.at(SyntaxKind::R_BRACE) {
             self.bump();
             self.wrap(cp, SyntaxKind::DICT_EXPR);
@@ -1088,7 +1076,6 @@ impl Parser<'_> {
     fn dict_entry(&mut self) {
         self.start(SyntaxKind::DICT_ENTRY);
         if self.eat(SyntaxKind::DOUBLE_STAR) {
-            // `{**d}`: not Starlark, but keep the entry shape.
             if !self.at(SyntaxKind::COMMA) && !self.at(SyntaxKind::R_BRACE) {
                 self.test();
             }
@@ -1099,7 +1086,6 @@ impl Parser<'_> {
         if self.eat(SyntaxKind::COLON) {
             self.test();
         } else {
-            // A set literal element. Bazel rejects it; flag, keep the tree.
             self.error("expected `:` in dict entry (set literals are not Starlark)");
         }
         self.finish();
@@ -1113,7 +1099,7 @@ impl Parser<'_> {
                 self.expect(SyntaxKind::IN_KW, "`in` in comprehension");
                 self.or_test();
             } else {
-                self.bump(); // if
+                self.bump();
                 self.or_test();
             }
             self.finish();

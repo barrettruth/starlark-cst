@@ -52,14 +52,13 @@ pub fn string_content_range(text: &str) -> Option<(usize, usize)> {
     let end = if bytes.len() >= start + q && bytes[bytes.len() - q..].iter().all(|&b| b == quote) {
         bytes.len() - q
     } else {
-        bytes.len() // unterminated
+        bytes.len()
     };
     Some((start, end.max(start)))
 }
 
 const TAB_STOP: usize = 8;
 
-// Maximal munch: longest match first, always.
 const THREE: &[(&[u8], SyntaxKind)] = &[
     (b"//=", SyntaxKind::DOUBLE_SLASH_ASSIGN),
     (b"<<=", SyntaxKind::SHL_ASSIGN),
@@ -119,7 +118,6 @@ impl<'a> Lexer<'a> {
                 if self.depth == 0 {
                     self.line_start();
                 } else {
-                    // Layout is suppressed inside brackets; the line has begun.
                     self.at_line_start = false;
                     self.token();
                 }
@@ -168,7 +166,6 @@ impl<'a> Lexer<'a> {
             self.push(SyntaxKind::WHITESPACE, self.pos - start);
         }
         self.at_line_start = false;
-        // Blank and comment-only lines carry no block structure.
         if matches!(self.peek(), None | Some(b'\n' | b'\r' | b'#')) {
             return;
         }
@@ -181,9 +178,6 @@ impl<'a> Lexer<'a> {
                 self.indents.pop();
                 self.push(SyntaxKind::DEDENT, 0);
             }
-            // A column that matches no enclosing block is an indentation
-            // error; open a block anyway so INDENT/DEDENT stay balanced and
-            // let the parser diagnose.
             if *self.indents.last().unwrap_or(&0) < col {
                 self.indents.push(col);
                 self.push(SyntaxKind::INDENT, 0);
@@ -280,9 +274,6 @@ impl<'a> Lexer<'a> {
             match self.peek() {
                 None => break,
                 Some(b'\\') => {
-                    // An escape consumes the next byte, raw strings included:
-                    // in a raw string `\"` is two characters of content but
-                    // still does not terminate the literal.
                     self.pos += 1;
                     if self.peek() == Some(b'\r') && self.peek_at(1) == Some(b'\n') {
                         self.pos += 2;
@@ -302,7 +293,7 @@ impl<'a> Lexer<'a> {
                         break;
                     }
                 }
-                Some(b'\n' | b'\r') if !triple => break, // unterminated
+                Some(b'\n' | b'\r') if !triple => break,
                 Some(_) => self.pos += 1,
             }
         }
@@ -363,8 +354,6 @@ impl<'a> Lexer<'a> {
     }
 
     fn ident_or_string(&mut self) {
-        // `r"..."`, `b'...'`, `rb"..."` and friends: at most one of each
-        // letter, immediately followed by a quote.
         let mut prefix = 0;
         let mut is_bytes = false;
         let mut seen_r = false;
@@ -412,12 +401,9 @@ impl<'a> Lexer<'a> {
             "or" => K::OR_KW,
             "pass" => K::PASS_KW,
             "return" => K::RETURN_KW,
-            // Soft keyword: the parser decides whether it opens a type alias.
             "type" if self.dialect.allows_type_syntax() => K::TYPE_KW,
             "cast" if self.dialect.has_type_keywords() => K::CAST_KW,
             "isinstance" if self.dialect.has_type_keywords() => K::ISINSTANCE_KW,
-            // Bazel's Lexer.java reserved set. `match` is absent: it is a
-            // Python soft keyword only, and real BUILD files use it as a name.
             "while" | "with" | "try" | "class" | "import" | "assert" | "async" | "await"
             | "del" | "except" | "finally" | "from" | "global" | "is" | "nonlocal" | "raise"
             | "yield" => K::FORBIDDEN_KW,
@@ -476,8 +462,6 @@ impl<'a> Lexer<'a> {
                 }
             }
             _ => {
-                // An unclassifiable byte; consume the whole UTF-8 character so
-                // lengths stay on char boundaries.
                 let len = self.src[self.pos..]
                     .chars()
                     .next()

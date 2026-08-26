@@ -30,8 +30,6 @@ fn call_callee_and_arguments() {
     assert_eq!(args[0].name().as_deref(), Some("name"));
     assert_eq!(args[1].name().as_deref(), Some("srcs"));
 
-    // A splat has no keyword even though it carries an IDENT token, which is
-    // the mistake `name()` guards against by requiring `=`.
     assert_eq!(args[2].name(), None);
     assert!(args[2].is_splat());
     assert_eq!(args[3].name(), None);
@@ -93,7 +91,6 @@ fn string_value_range_indexes_the_source() {
         assert_eq!(literal.string_value().as_deref(), Some(expected));
     }
 
-    // Non-strings have neither.
     let literal = parse("x = 42\n", Dialect::Bazel)
         .syntax()
         .descendants()

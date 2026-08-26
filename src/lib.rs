@@ -38,7 +38,7 @@ pub mod syntax_kind;
 pub use rowan::{TextRange, TextSize};
 
 pub use dialect::{Dialect, FileKind, classify};
-pub use lexer::{Lexeme, tokenize};
+pub use lexer::{LexError, Lexed, Lexeme, tokenize};
 pub use parser::{Parse, ParseError, parse};
 pub use syntax_kind::{Starlark, SyntaxKind};
 

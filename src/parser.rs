@@ -59,9 +59,10 @@ impl Parse {
 /// - the root node is [`SyntaxKind::FILE`]
 #[must_use]
 pub fn parse(src: &str, dialect: Dialect) -> Parse {
+    let lexed = tokenize(src, dialect);
     let mut spans = Vec::new();
     let mut offset = 0usize;
-    for lexeme in tokenize(src, dialect) {
+    for lexeme in lexed.tokens {
         let end = offset + lexeme.len as usize;
         spans.push(Span {
             kind: lexeme.kind,
@@ -70,12 +71,26 @@ pub fn parse(src: &str, dialect: Dialect) -> Parse {
         });
         offset = end;
     }
+    // Lexical errors seed the list, so that at a shared offset the fact about
+    // the bytes is reported before the parser's expectation about them.
+    #[allow(clippy::cast_possible_truncation)]
+    let errors = lexed
+        .errors
+        .into_iter()
+        .map(|error| ParseError {
+            message: error.message,
+            range: TextRange::new(
+                TextSize::from(error.start as u32),
+                TextSize::from(error.end as u32),
+            ),
+        })
+        .collect();
     let parser = Parser {
         src,
         tokens: spans,
         pos: 0,
         builder: GreenNodeBuilder::new(),
-        errors: Vec::new(),
+        errors,
         depth: 0,
         recursion: 0,
     };
@@ -122,6 +137,10 @@ impl Parser<'_> {
         }
         self.flush_trivia();
         self.builder.finish_node();
+        // Lexical errors were seeded before the parse and the parser appends in
+        // source order, so a stable sort interleaves the two into one ordered
+        // list while keeping the lexical one first where they share an offset.
+        self.errors.sort_by_key(|error| error.range.start());
         Parse {
             green: self.builder.finish(),
             errors: self.errors,
@@ -1025,7 +1044,13 @@ impl Parser<'_> {
             SyntaxKind::L_BRACKET => self.list_or_comp(),
             SyntaxKind::L_BRACE => self.dict_or_comp(),
             _ => {
-                self.error("expected an expression");
+                // An `ERROR_TOKEN` is a character the lexer has already
+                // reported as invalid. Adding `expected an expression` over
+                // the top of it is a second squiggle on one byte, saying less
+                // than the first.
+                if !self.at(SyntaxKind::ERROR_TOKEN) {
+                    self.error("expected an expression");
+                }
                 self.start(SyntaxKind::ERROR);
                 if !STMT_RECOVERY.contains(&self.current()) && !self.stops_expr() {
                     self.bump();

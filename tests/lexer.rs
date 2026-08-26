@@ -95,7 +95,7 @@ fn significant(tokens: &[Lexeme]) -> Vec<Lexeme> {
 #[test]
 fn every_operator_lexes_to_itself() {
     for &(kind, text) in OPERATORS {
-        let tokens = significant(&tokenize(text, Dialect::Bazel));
+        let tokens = significant(&tokenize(text, Dialect::Bazel).tokens);
         assert_eq!(tokens.len(), 1, "{text:?} lexed as {tokens:?}");
         assert_eq!(tokens[0].kind, kind, "{text:?} lexed as {tokens:?}");
         assert_eq!(tokens[0].len as usize, text.len(), "{text:?}");
@@ -110,7 +110,7 @@ fn every_operator_pair_lexes_to_the_pair() {
     for &(a_kind, a) in OPERATORS {
         for &(b_kind, b) in OPERATORS {
             let src = format!("{a} {b}");
-            let tokens = significant(&tokenize(&src, Dialect::Bazel));
+            let tokens = significant(&tokenize(&src, Dialect::Bazel).tokens);
             let kinds: Vec<SyntaxKind> = tokens.iter().map(|t| t.kind).collect();
             assert_eq!(kinds, [a_kind, b_kind], "{src:?} lexed as {tokens:?}");
         }
@@ -135,7 +135,7 @@ fn maximal_munch_slash_family() {
         ("//=/", &[K::DOUBLE_SLASH_ASSIGN, K::SLASH]),
     ];
     for &(src, expected) in cases {
-        let kinds: Vec<SyntaxKind> = significant(&tokenize(src, Dialect::Bazel))
+        let kinds: Vec<SyntaxKind> = significant(&tokenize(src, Dialect::Bazel).tokens)
             .iter()
             .map(|t| t.kind)
             .collect();
@@ -167,7 +167,7 @@ fn corpus_is_covered_byte_for_byte() {
             continue;
         };
         let dialect = classify(&path, None).map_or(Dialect::Standard, |(d, _)| d);
-        let tokens = tokenize(&src, dialect);
+        let tokens = tokenize(&src, dialect).tokens;
         let total: usize = tokens.iter().map(|t| t.len as usize).sum();
         let eof_last = tokens
             .last()
@@ -195,6 +195,7 @@ fn corpus_is_covered_byte_for_byte() {
 fn brackets_suppress_layout_through_the_closing_line() {
     let layout = |src: &str| {
         tokenize(src, Dialect::Bazel)
+            .tokens
             .into_iter()
             .filter(|t| matches!(t.kind, SyntaxKind::INDENT | SyntaxKind::DEDENT))
             .count()
@@ -211,7 +212,7 @@ fn brackets_suppress_layout_through_the_closing_line() {
 fn render(src: &str, dialect: Dialect) -> String {
     let mut offset = 0usize;
     let mut out = String::new();
-    for token in tokenize(src, dialect) {
+    for token in tokenize(src, dialect).tokens {
         let end = offset + token.len as usize;
         let _ = writeln!(out, "{:?} {:?}", token.kind, &src[offset..end]);
         offset = end;

@@ -15,6 +15,30 @@ pub struct Lexeme {
     pub len: u32,
 }
 
+/// A lexical diagnostic: a fact about the bytes that no later pass can
+/// recover.
+///
+/// The token stream is unaffected by one of these — the token is emitted
+/// exactly as it would have been, so the round trip and the tree shape are the
+/// same whether or not the literal was closed. That matters most for the case
+/// an editor hits constantly: `load("@rules_` is an unclosed string on almost
+/// every keystroke, and the consumer still needs the `STRING` token in its
+/// usual place to offer a completion inside it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LexError {
+    pub message: String,
+    /// Byte offsets into the source, always non-empty.
+    pub start: usize,
+    pub end: usize,
+}
+
+/// The token stream, and what was wrong with the bytes behind it.
+#[derive(Debug, Clone, Default)]
+pub struct Lexed {
+    pub tokens: Vec<Lexeme>,
+    pub errors: Vec<LexError>,
+}
+
 /// Tokenise `src`.
 ///
 /// # Contract
@@ -25,8 +49,9 @@ pub struct Lexeme {
 /// - never panics, never returns `Err`; unclassifiable bytes become
 ///   [`SyntaxKind::ERROR_TOKEN`] spanning a whole UTF-8 character, so every
 ///   token boundary is a character boundary and the sum above stays exact
+/// - `errors` is in source order, and every range is non-empty
 #[must_use]
-pub fn tokenize(src: &str, dialect: Dialect) -> Vec<Lexeme> {
+pub fn tokenize(src: &str, dialect: Dialect) -> Lexed {
     Lexer::new(src, dialect).run()
 }
 
@@ -98,6 +123,7 @@ struct Lexer<'a> {
     pos: usize,
     dialect: Dialect,
     out: Vec<Lexeme>,
+    errors: Vec<LexError>,
     /// Indentation columns of enclosing blocks. Never empty; `[0]` at top level.
     indents: Vec<usize>,
     /// `(`/`[`/`{` nesting depth. Layout is suppressed inside brackets.
@@ -114,13 +140,14 @@ impl<'a> Lexer<'a> {
             pos: 0,
             dialect,
             out: Vec::new(),
+            errors: Vec::new(),
             indents: vec![0],
             depth: 0,
             at_line_start: true,
         }
     }
 
-    fn run(mut self) -> Vec<Lexeme> {
+    fn run(mut self) -> Lexed {
         while self.pos < self.bytes.len() {
             if self.at_line_start {
                 if self.depth == 0 {
@@ -138,7 +165,38 @@ impl<'a> Lexer<'a> {
             self.push(SyntaxKind::DEDENT, 0);
         }
         self.push(SyntaxKind::EOF, 0);
-        self.out
+        Lexed {
+            tokens: self.out,
+            errors: self.errors,
+        }
+    }
+
+    /// Record a lexical fact. Called only where `start < end`, so every range
+    /// a consumer sees is something an editor can underline.
+    fn error(&mut self, message: impl Into<String>, start: usize, end: usize) {
+        self.errors.push(LexError {
+            message: message.into(),
+            start,
+            end,
+        });
+    }
+
+    /// Consume one unclassifiable character as an `ERROR_TOKEN`, and say why.
+    ///
+    /// The token kind already records that the byte belongs to no token, but
+    /// the message is reported here rather than left to the parser because a
+    /// byte being unlexable is true regardless of where the parser was: left
+    /// to the parser, an `ERROR_TOKEN` swallowed by a recovery loop passes
+    /// without a word.
+    fn error_token(&mut self) {
+        let start = self.pos;
+        let ch = self.src[start..].chars().next();
+        let len = ch.map_or(1, char::len_utf8);
+        self.pos += len;
+        self.push(SyntaxKind::ERROR_TOKEN, len);
+        if let Some(ch) = ch {
+            self.error(format!("invalid character `{ch}`"), start, self.pos);
+        }
     }
 
     fn push(&mut self, kind: SyntaxKind, len: usize) {
@@ -168,13 +226,22 @@ impl<'a> Lexer<'a> {
     /// answer is to open a block anyway: `INDENT` and `DEDENT` must stay
     /// balanced for the parser to recover at all, so the lexer keeps the
     /// bookkeeping honest and leaves the diagnosis to the parser.
+    ///
+    /// A tab is reported once for the line rather than once per tab, and only
+    /// on a line that carries code: Bazel rejects tab indentation, but the
+    /// whitespace on a blank line indents nothing, and trailing whitespace is
+    /// common enough that flagging it would bury the real ones.
     fn line_start(&mut self) {
         let start = self.pos;
         let mut col = 0usize;
+        let mut tabbed = false;
         loop {
             match self.peek() {
                 Some(b' ') => col += 1,
-                Some(b'\t') => col += TAB_STOP - col % TAB_STOP,
+                Some(b'\t') => {
+                    col += TAB_STOP - col % TAB_STOP;
+                    tabbed = true;
+                }
                 _ => break,
             }
             self.pos += 1;
@@ -185,6 +252,13 @@ impl<'a> Lexer<'a> {
         self.at_line_start = false;
         if matches!(self.peek(), None | Some(b'\n' | b'\r' | b'#')) {
             return;
+        }
+        if tabbed {
+            self.error(
+                "tab characters are not allowed for indentation",
+                start,
+                self.pos,
+            );
         }
         let top = *self.indents.last().unwrap_or(&0);
         if col > top {
@@ -270,10 +344,7 @@ impl<'a> Lexer<'a> {
                 self.pos += len;
                 self.push(SyntaxKind::LINE_CONTINUATION, len);
             }
-            _ => {
-                self.pos += 1;
-                self.push(SyntaxKind::ERROR_TOKEN, 1);
-            }
+            _ => self.error_token(),
         }
     }
 
@@ -292,6 +363,8 @@ impl<'a> Lexer<'a> {
         if triple {
             self.pos += 2;
         }
+        let open_end = self.pos;
+        let mut closed = false;
         loop {
             match self.peek() {
                 None => break,
@@ -307,17 +380,25 @@ impl<'a> Lexer<'a> {
                     if triple {
                         if self.peek_at(1) == Some(quote) && self.peek_at(2) == Some(quote) {
                             self.pos += 3;
+                            closed = true;
                             break;
                         }
                         self.pos += 1;
                     } else {
                         self.pos += 1;
+                        closed = true;
                         break;
                     }
                 }
                 Some(b'\n' | b'\r') if !triple => break,
                 Some(_) => self.pos += 1,
             }
+        }
+        if !closed {
+            // On the opening quote, not on the truncation point: the quote is
+            // what is missing a partner, and it is where the fix goes. Same
+            // anchor the parser uses for an unclosed bracket.
+            self.error("unclosed string literal", start, open_end);
         }
         let kind = if is_bytes {
             SyntaxKind::BYTES
@@ -489,12 +570,7 @@ impl<'a> Lexer<'a> {
                 }
             }
             _ => {
-                let len = self.src[self.pos..]
-                    .chars()
-                    .next()
-                    .map_or(1, char::len_utf8);
-                self.pos += len;
-                self.push(K::ERROR_TOKEN, len);
+                self.error_token();
                 return;
             }
         };

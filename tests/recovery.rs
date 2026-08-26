@@ -330,3 +330,91 @@ fn errors_at_end_of_input_have_somewhere_to_point() {
         );
     }
 }
+
+/// A lexical error is a fact about the bytes that no later pass can recover:
+/// a truncated literal is an ordinary `STRING` token by the time the parser
+/// sees it. Reporting has to happen in the lexer, and reporting it must not
+/// disturb the token stream — the tree an editor gets for `load("@rules_`
+/// mid-keystroke has to be the same shape as the closed one.
+#[test]
+fn lexical_errors_are_reported() {
+    let cases = [
+        ("x = \"hello\ny = 1\n", "unclosed string literal"),
+        ("x = \"hello", "unclosed string literal"),
+        ("x = \"\"\"hello\n", "unclosed string literal"),
+        ("x = r'ab\n", "unclosed string literal"),
+        ("def f():\n\tpass\n", "tab characters are not allowed"),
+        ("x = ?\n", "invalid character"),
+    ];
+    for (src, expected) in cases {
+        let parsed = parse(src, Dialect::Bazel);
+        assert_eq!(parsed.syntax().to_string(), src, "{src:?} must round-trip");
+        assert!(
+            parsed.errors().iter().any(|e| e.message.contains(expected)),
+            "{src:?} reported {:?}, wanted {expected:?}",
+            parsed.errors()
+        );
+    }
+}
+
+/// The cases next door to each lexical error, which must stay silent.
+#[test]
+fn well_formed_input_stays_silent() {
+    for src in [
+        "x = \"hello\"\n",
+        "x = \"\"\n",
+        "x = \"\"\"a\"\"\"\n",
+        "x = r'ab'\n",
+        // A tab is only wrong as indentation. Bazel accepts it elsewhere, and
+        // whitespace on a blank line indents nothing.
+        "x =\t1\n",
+        "x = [\n\t1,\n]\n",
+        "def f():\n    pass\n\t\n",
+    ] {
+        let parsed = parse(src, Dialect::Bazel);
+        assert!(
+            parsed.errors().is_empty(),
+            "{src:?} reported {:?}",
+            parsed.errors()
+        );
+    }
+}
+
+/// One bad byte is one diagnostic, and the lexer's is the informative one.
+#[test]
+fn an_invalid_character_is_not_reported_twice() {
+    let parsed = parse("x = ?\n", Dialect::Bazel);
+    assert_eq!(
+        parsed.errors().len(),
+        1,
+        "expected one diagnostic, got {:?}",
+        parsed.errors()
+    );
+}
+
+/// Lexical and syntactic errors arrive as one list in source order, so a
+/// consumer publishing diagnostics does not have to sort them, and
+/// `errors()[0]` is the first thing wrong with the file.
+#[test]
+fn errors_are_in_source_order() {
+    let src = "def f():\n\tx = \"oops\n\treturn ?\n";
+    let parsed = parse(src, Dialect::Bazel);
+    assert_eq!(parsed.syntax().to_string(), src, "must still round-trip");
+
+    let starts: Vec<u32> = parsed
+        .errors()
+        .iter()
+        .map(|e| e.range.start().into())
+        .collect();
+    let mut sorted = starts.clone();
+    sorted.sort_unstable();
+    assert_eq!(starts, sorted, "{:?}", parsed.errors());
+
+    for error in parsed.errors() {
+        assert!(
+            !error.range.is_empty(),
+            "empty range: {error:?} in {:?}",
+            parsed.errors()
+        );
+    }
+}

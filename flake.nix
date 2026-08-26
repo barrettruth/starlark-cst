@@ -15,6 +15,8 @@
         pkgs = import nixpkgs { inherit system overlays; };
         toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         commonBuildInputs = [
+          pkgs.cargo-edit
+          pkgs.gh
           pkgs.git
           pkgs.just
         ];

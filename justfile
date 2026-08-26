@@ -18,3 +18,6 @@ corpus:
 
 ci: format lint test
     @:
+
+release version *args:
+    nix develop .#ci --command ./scripts/release.sh {{version}} {{args}}

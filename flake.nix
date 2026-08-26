@@ -15,12 +15,8 @@
         pkgs = import nixpkgs { inherit system overlays; };
         toolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         commonBuildInputs = [
-          pkgs.bazel-buildtools
-          pkgs.bazelisk
           pkgs.git
           pkgs.just
-          pkgs.shellcheck
-          pkgs.shfmt
         ];
       in
       {
@@ -32,6 +28,10 @@
         };
 
         devShells.default = pkgs.mkShell {
+          buildInputs = [ toolchain ] ++ commonBuildInputs;
+        };
+
+        devShells.ci = pkgs.mkShell {
           buildInputs = [ toolchain ] ++ commonBuildInputs;
         };
       }

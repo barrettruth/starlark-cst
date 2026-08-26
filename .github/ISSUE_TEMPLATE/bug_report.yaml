@@ -1,28 +1,31 @@
 name: Bug Report
-description: Report a bug in starlark-cst
+description: Report a bug
+title: 'bug: '
 labels: [bug]
 body:
   - type: checkboxes
     attributes:
       label: Prerequisites
       options:
-        - label: I have searched existing issues and this is not a duplicate
+        - label:
+            I have searched [existing
+            issues](https://github.com/barrettruth/starlark-cst/issues)
           required: true
-        - label: I have updated to the latest version of starlark-cst
+        - label: I have updated to the latest version
           required: true
 
   - type: input
     attributes:
-      label: Version
-      placeholder: 'starlark-cst 0.1.0'
+      label: 'Version'
+      placeholder: 'e.g. 0.0.1'
     validations:
       required: true
 
   - type: dropdown
     attributes:
-      label: Which property broke?
+      label: Which guarantee broke?
       options:
-        - Round-trip (output differs from input)
+        - Round-trip - the output differs from the input
         - Parse error on a file Bazel accepts
         - Panic
         - Wrong tree shape
@@ -32,9 +35,9 @@ body:
 
   - type: input
     attributes:
-      label: Dialect
-      description: The Dialect passed to parse, and the file name it came from
-      placeholder: 'Dialect::Bazel, BUILD.bazel'
+      label: 'Dialect'
+      description: 'The `Dialect` passed to `parse`, and the file name it came from'
+      placeholder: 'e.g. Dialect::Bazel, BUILD.bazel'
     validations:
       required: true
 
@@ -49,6 +52,24 @@ body:
   - type: textarea
     attributes:
       label: Description
-      description: What happened, and what did you expect to happen?
+      description: What happened? What did you expect?
+    validations:
+      required: true
+
+  - type: textarea
+    attributes:
+      label: Minimal reproduction
+      description: |
+        A test that fails against the input above. Confirm it still fails
+        before submitting.
+      render: rust
+      value: |
+        use starlark_cst::{Dialect, parse};
+
+        #[test]
+        fn reproduces() {
+            let src = "";
+            assert_eq!(parse(src, Dialect::Bazel).syntax().to_string(), src);
+        }
     validations:
       required: true

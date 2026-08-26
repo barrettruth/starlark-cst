@@ -52,14 +52,4 @@ parse(src, dialect).syntax().to_string() == src
 Enforced against ~1,000 real-world files from bazel, rules_cc, rules_python,
 rules_go, bazel-skylib, buildtools, rules_java and apple_support.
 
-## Development
-
-```sh
-nix develop      # rust, buildifier, bazelisk, just
-just corpus      # harvest the conformance corpus
-just ci          # format, lint, test
-```
-
-## License
-
-MIT
+See [CONTRIBUTING.md](CONTRIBUTING.md).

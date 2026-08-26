@@ -11,7 +11,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 
-use starlark_cst::{Dialect, classify, parse};
+use starlark_cst::{Dialect, SyntaxKind, classify, parse};
 
 /// Enough to be representative without making `just ci` slow.
 const MAX_FILES: usize = 300;
@@ -246,4 +246,37 @@ cc_library(
         calls >= 2,
         "expected both calls to survive recovery, found {calls}"
     );
+}
+
+/// An empty slot in an argument list is a syntax error, as it already is in a
+/// list or a dict. Recovery keeps the comma in the tree, so the round trip
+/// holds, and produces no `ARG` — a node spanning nothing is one a consumer
+/// cannot report a position for.
+#[test]
+fn an_empty_argument_slot_is_rejected() {
+    for src in ["foo(a, , b)\n", "foo(, a)\n", "foo(,)\n"] {
+        let parsed = parse(src, Dialect::Bazel);
+        assert_eq!(parsed.syntax().to_string(), src, "round trip for {src:?}");
+
+        let errors = parsed.errors();
+        assert_eq!(errors.len(), 1, "{src:?} produced {errors:?}");
+        assert_eq!(errors[0].message, "expected an expression");
+        assert_eq!(
+            &src[errors[0].range.start().into()..errors[0].range.end().into()],
+            ",",
+            "the error anchors on the comma that opens the empty slot"
+        );
+
+        assert!(
+            !parsed
+                .syntax()
+                .descendants()
+                .any(|node| node.kind() == SyntaxKind::ARG && node.text_range().is_empty()),
+            "{src:?} built an ARG spanning nothing"
+        );
+    }
+
+    // A single trailing comma before `)` stays legal.
+    let trailing = parse("foo(a,)\n", Dialect::Bazel);
+    assert!(trailing.errors().is_empty(), "{:?}", trailing.errors());
 }

@@ -867,6 +867,18 @@ impl Parser<'_> {
         self.start(SyntaxKind::ARG_LIST);
         self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
+            // A slot beginning at a comma is empty. Lists and dicts already
+            // reject this by running into `test`; arguments have to say so
+            // explicitly, because the branch below steps around a comma rather
+            // than parsing one. An `ARG` here would span nothing, and a node
+            // with no text is one a consumer cannot report a position for.
+            if self.at(SyntaxKind::COMMA) {
+                self.error("expected an expression");
+                self.start(SyntaxKind::ERROR);
+                self.bump();
+                self.finish();
+                continue;
+            }
             let before = self.significant(0);
             self.start(SyntaxKind::ARG);
             if self.at(SyntaxKind::STAR) || self.at(SyntaxKind::DOUBLE_STAR) {

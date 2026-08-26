@@ -229,7 +229,41 @@ impl Parser<'_> {
     }
 
     fn error(&mut self, message: impl Into<String>) {
+        let range = self.error_range();
+        self.push_error(message, range);
+    }
+
+    /// Where to point when the parser gives up here.
+    ///
+    /// The current token, unless it is `EOF`, which is zero width: an empty
+    /// diagnostic range has no characters to underline, and clients disagree
+    /// about what to draw for one — some nothing at all. An unclosed delimiter
+    /// is the state a BUILD file spends most of its editing life in, so that
+    /// would make the commonest diagnostic the least visible. At end of input
+    /// the last real token is the closest thing to where the reader is.
+    fn error_range(&self) -> TextRange {
         let range = self.current_range();
+        if !range.is_empty() {
+            return range;
+        }
+        self.tokens[..=self.significant(0)]
+            .iter()
+            .rev()
+            .find(|span| span.end > span.start)
+            .map_or(range, |span| {
+                #[allow(clippy::cast_possible_truncation)]
+                TextRange::new(
+                    TextSize::from(span.start as u32),
+                    TextSize::from(span.end as u32),
+                )
+            })
+    }
+
+    fn push_error(&mut self, message: impl Into<String>, range: TextRange) {
+        debug_assert!(
+            !range.is_empty() || self.src.is_empty(),
+            "empty diagnostic range at {range:?}"
+        );
         self.errors.push(ParseError {
             message: message.into(),
             range,
@@ -239,6 +273,18 @@ impl Parser<'_> {
     fn expect(&mut self, kind: SyntaxKind, what: &str) {
         if !self.eat(kind) {
             self.error(format!("expected {what}"));
+        }
+    }
+
+    /// `expect`, for a delimiter that closes something.
+    ///
+    /// Anchored on the opening delimiter rather than on wherever the parser
+    /// noticed, which is what Bazel's own lexer does for the same reason: it
+    /// points at the `(` that needs closing instead of at the end of the
+    /// buffer, and it is never empty.
+    fn expect_closing(&mut self, kind: SyntaxKind, what: &str, opener: TextRange) {
+        if !self.eat(kind) {
+            self.push_error(format!("expected {what}"), opener);
         }
     }
 
@@ -338,6 +384,7 @@ impl Parser<'_> {
     fn load_stmt(&mut self) {
         self.start(SyntaxKind::LOAD_STMT);
         self.bump();
+        let opener = self.current_range();
         self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
@@ -359,7 +406,7 @@ impl Parser<'_> {
                 self.finish();
             }
         }
-        self.expect(SyntaxKind::R_PAREN, "`)` to close load()");
+        self.expect_closing(SyntaxKind::R_PAREN, "`)` to close load()", opener);
         self.finish();
     }
 
@@ -421,6 +468,7 @@ impl Parser<'_> {
 
     fn param_list(&mut self) {
         self.start(SyntaxKind::PARAM_LIST);
+        let opener = self.current_range();
         self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             let before = self.significant(0);
@@ -432,7 +480,7 @@ impl Parser<'_> {
                 self.finish();
             }
         }
-        self.expect(SyntaxKind::R_PAREN, "`)` to close parameters");
+        self.expect_closing(SyntaxKind::R_PAREN, "`)` to close parameters", opener);
         self.finish();
     }
 
@@ -865,6 +913,7 @@ impl Parser<'_> {
 
     fn arg_list(&mut self) {
         self.start(SyntaxKind::ARG_LIST);
+        let opener = self.current_range();
         self.bump();
         while !self.at(SyntaxKind::R_PAREN) && !self.at(SyntaxKind::EOF) {
             // A slot beginning at a comma is empty. Lists and dicts already
@@ -913,7 +962,7 @@ impl Parser<'_> {
                 self.finish();
             }
         }
-        self.expect(SyntaxKind::R_PAREN, "`)` to close arguments");
+        self.expect_closing(SyntaxKind::R_PAREN, "`)` to close arguments", opener);
         self.finish();
     }
 
@@ -1027,6 +1076,7 @@ impl Parser<'_> {
 
     fn list_or_comp(&mut self) {
         let cp = self.checkpoint();
+        let opener = self.current_range();
         self.bump();
         if self.at(SyntaxKind::R_BRACKET) {
             self.bump();
@@ -1036,7 +1086,7 @@ impl Parser<'_> {
         self.test();
         if self.at(SyntaxKind::FOR_KW) {
             self.comp_clauses();
-            self.expect(SyntaxKind::R_BRACKET, "`]`");
+            self.expect_closing(SyntaxKind::R_BRACKET, "`]`", opener);
             self.wrap(cp, SyntaxKind::LIST_COMP);
             return;
         }
@@ -1051,12 +1101,13 @@ impl Parser<'_> {
                 break;
             }
         }
-        self.expect(SyntaxKind::R_BRACKET, "`]`");
+        self.expect_closing(SyntaxKind::R_BRACKET, "`]`", opener);
         self.wrap(cp, SyntaxKind::LIST_EXPR);
     }
 
     fn dict_or_comp(&mut self) {
         let cp = self.checkpoint();
+        let opener = self.current_range();
         self.bump();
         if self.at(SyntaxKind::R_BRACE) {
             self.bump();
@@ -1066,7 +1117,7 @@ impl Parser<'_> {
         self.dict_entry();
         if self.at(SyntaxKind::FOR_KW) {
             self.comp_clauses();
-            self.expect(SyntaxKind::R_BRACE, "`}`");
+            self.expect_closing(SyntaxKind::R_BRACE, "`}`", opener);
             self.wrap(cp, SyntaxKind::DICT_COMP);
             return;
         }
@@ -1081,7 +1132,7 @@ impl Parser<'_> {
                 break;
             }
         }
-        self.expect(SyntaxKind::R_BRACE, "`}`");
+        self.expect_closing(SyntaxKind::R_BRACE, "`}`", opener);
         self.wrap(cp, SyntaxKind::DICT_EXPR);
     }
 

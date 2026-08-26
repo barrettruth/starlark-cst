@@ -280,3 +280,53 @@ fn an_empty_argument_slot_is_rejected() {
     let trailing = parse("foo(a,)\n", Dialect::Bazel);
     assert!(trailing.errors().is_empty(), "{:?}", trailing.errors());
 }
+
+/// A diagnostic with an empty range has no characters to underline, and
+/// clients disagree about what to draw for one. An unclosed delimiter is the
+/// state a build file spends most of its editing life in, so this is the
+/// commonest diagnostic the crate produces.
+#[test]
+fn errors_at_end_of_input_have_somewhere_to_point() {
+    for src in [
+        "foo(\n",
+        "foo(a\n",
+        "x = [\n",
+        "x = {\n",
+        "def f(:\n    pass\n",
+    ] {
+        let parsed = parse(src, Dialect::Bazel);
+        assert_eq!(parsed.syntax().to_string(), src, "round trip for {src:?}");
+        for error in parsed.errors() {
+            assert!(
+                error.range.start() < error.range.end(),
+                "empty range for {src:?}: {error:?}"
+            );
+        }
+    }
+
+    // An unclosed delimiter anchors on the delimiter, not on where the parser
+    // noticed: it points at the `(` that needs closing.
+    for (src, opener) in [
+        ("foo(\n", "("),
+        ("foo(a\n", "("),
+        ("x = [\n", "["),
+        ("x = {\n", "{"),
+        ("def f(:\n    pass\n", "("),
+    ] {
+        let parsed = parse(src, Dialect::Bazel);
+        let closing = parsed
+            .errors()
+            .iter()
+            .find(|error| {
+                error.message.starts_with("expected `)`")
+                    || error.message.starts_with("expected `]`")
+                    || error.message.starts_with("expected `}`")
+            })
+            .unwrap_or_else(|| panic!("{src:?} reported no unclosed delimiter"));
+        assert_eq!(
+            &src[closing.range.start().into()..closing.range.end().into()],
+            opener,
+            "{src:?} anchored {closing:?} somewhere other than the opener"
+        );
+    }
+}

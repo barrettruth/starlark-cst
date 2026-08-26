@@ -24,7 +24,7 @@
       {
         packages.default = pkgs.rustPlatform.buildRustPackage {
           pname = "starlark-cst";
-          version = "0.1.1";
+          version = "0.1.2";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
         };

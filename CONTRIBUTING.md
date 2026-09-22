@@ -8,7 +8,7 @@ tree plus a list of errors.
 It has no name resolution, no `load()` following, no type inference, and no
 concept of labels, targets, packages or a build graph. A change that requires
 knowing what a string refers to belongs in the consumer, such as
-[`bazel-language-server`](https://github.com/barrettruth/bazel-language-server).
+[`bazel-language-server`](https://forge.barrettruth.com/barrettruth/bazel-language-server).
 
 ## Pull Requests
 

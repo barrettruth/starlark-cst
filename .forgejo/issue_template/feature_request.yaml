@@ -16,7 +16,7 @@ body:
       options:
         - label:
             I have searched [existing
-            issues](https://github.com/barrettruth/starlark-cst/issues)
+            issues](https://forge.barrettruth.com/barrettruth/starlark-cst/issues)
           required: true
 
   - type: textarea
